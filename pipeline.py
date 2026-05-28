@@ -2,10 +2,12 @@ import argparse
 import subprocess
 import json
 import os
+import shutil
 from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
+GWS = shutil.which("gws") or "gws"
 
 # ────────────────────────────
 # 설정
@@ -20,7 +22,7 @@ MAX_RESULTS = 5
 def get_recent_emails(max_results=MAX_RESULTS):
     print(f"\n📬 Gmail에서 최신 메일 {max_results}개 가져오는 중...")
     result = subprocess.run(
-        ["gws", "gmail", "users", "messages", "list",
+        [GWS, "gmail", "users", "messages", "list",
          "--params", json.dumps({"userId": GMAIL_USER, "maxResults": max_results})],
         capture_output=True, text=True
     )
@@ -32,7 +34,7 @@ def get_recent_emails(max_results=MAX_RESULTS):
 # ────────────────────────────
 def get_email_content(message_id):
     result = subprocess.run(
-        ["gws", "gmail", "users", "messages", "get",
+        [GWS, "gmail", "users", "messages", "get",
          "--params", json.dumps({"userId": GMAIL_USER, "id": message_id, "format": "full"})],
         capture_output=True, text=True
     )
@@ -130,7 +132,7 @@ def register_to_calendar(event_data, email):
     }
 
     result = subprocess.run(
-        ["gws", "calendar", "events", "insert",
+        [GWS, "calendar", "events", "insert",
          "--params", json.dumps({"calendarId": CALENDAR_ID}),
          "--json", json.dumps(resource)],
         capture_output=True, text=True

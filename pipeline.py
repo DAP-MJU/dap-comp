@@ -1,3 +1,4 @@
+import argparse
 import subprocess
 import json
 import os
@@ -140,6 +141,10 @@ def register_to_calendar(event_data, email):
 # 메인 실행
 # ────────────────────────────
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--message-id", help="처리할 특정 메일 ID (watcher에서 호출 시 사용)")
+    args = parser.parse_args()
+
     print("🚀 DAP 파이프라인 시작")
     print(f"   실행 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"   캘린더 ID: {CALENDAR_ID}")
@@ -149,7 +154,12 @@ def main():
         print("❌ .env 파일에 CALENDAR_ID가 없습니다.")
         return
 
-    messages = get_recent_emails()
+    if args.message_id:
+        messages = [{"id": args.message_id}]
+        print(f"   메일 ID: {args.message_id}")
+    else:
+        messages = get_recent_emails()
+
     if not messages:
         print("📭 새 메일 없음")
         return

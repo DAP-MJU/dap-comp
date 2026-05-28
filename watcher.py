@@ -3,9 +3,11 @@ import json
 import os
 import sys
 import signal
+import shutil
 from dotenv import load_dotenv
 
 load_dotenv()
+GWS = shutil.which("gws") or "gws"
 
 GCP_PROJECT   = os.getenv("GCP_PROJECT", "dap-mju")
 POLL_INTERVAL = int(os.getenv("WATCH_POLL_INTERVAL", "5"))
@@ -49,7 +51,7 @@ def main() -> None:
     print("   Ctrl+C 로 종료\n")
 
     cmd = [
-        "gws", "gmail", "+watch",
+        GWS, "gmail", "+watch",
         "--project", GCP_PROJECT,
         "--label-ids", "INBOX",
         "--poll-interval", str(POLL_INTERVAL),
@@ -57,11 +59,15 @@ def main() -> None:
 
     # stderr 는 터미널로 바로 출력해 gws 오류를 즉시 확인
     _watcher_proc = subprocess.Popen(
-        cmd,
+        " ".join(cmd),
         stdout=subprocess.PIPE,
-        text=True,
-        bufsize=1,
+        stderr=subprocess.STDOUT,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=0,
+        shell=True,
     )
+
 
     try:
         for raw_line in _watcher_proc.stdout:

@@ -24,7 +24,7 @@ def get_recent_emails(max_results=MAX_RESULTS):
     result = subprocess.run(
         [GWS, "gmail", "users", "messages", "list",
          "--params", json.dumps({"userId": GMAIL_USER, "maxResults": max_results})],
-        capture_output=True, text=True
+        capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
     data = json.loads(result.stdout)
     return data.get("messages", [])
@@ -36,7 +36,7 @@ def get_email_content(message_id):
     result = subprocess.run(
         [GWS, "gmail", "users", "messages", "get",
          "--params", json.dumps({"userId": GMAIL_USER, "id": message_id, "format": "full"})],
-        capture_output=True, text=True
+        capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
     return json.loads(result.stdout)
 
@@ -93,7 +93,7 @@ def extract_event_with_claude(email):
 """
     result = subprocess.run(
         ["claude", "-p", prompt],
-        capture_output=True, text=True
+        capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
     raw = result.stdout.strip()
 
@@ -135,7 +135,7 @@ def register_to_calendar(event_data, email):
         [GWS, "calendar", "events", "insert",
          "--params", json.dumps({"calendarId": CALENDAR_ID}),
          "--json", json.dumps(resource)],
-        capture_output=True, text=True
+        capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
     return json.loads(result.stdout)
 

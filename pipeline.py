@@ -3,42 +3,58 @@ import subprocess
 import json
 import os
 import shutil
+import sys
 from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
-GWS = shutil.which("gws") or "gws"
+GWS = shutil.which("gws.cmd") or shutil.which("gws") or "gws"
 
-# ────────────────────────────
-# 설정
-# ────────────────────────────
+
+def parse_gws_output(stdout: str):
+    idx = -1
+    for i, ch in enumerate(stdout):
+        if ch in ("{", "["):
+            idx = i
+            break
+    if idx == -1:
+        raise ValueError(f"JSON을 찾을 수 없음: {stdout[:200]}")
+    return json.loads(stdout[idx:])
+
+
+def run_gws(args: list):
+    parts = []
+    for a in args:
+        escaped = a.replace('"', '\\"')
+        parts.append(f'"{escaped}"')
+    cmd = "gws " + " ".join(parts)
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        shell=True
+    )
+    return parse_gws_output(result.stdout)
+
+
 CALENDAR_ID = os.getenv("CALENDAR_ID")
 GMAIL_USER  = os.getenv("GMAIL_USER", "me")
 MAX_RESULTS = 5
 
-# ────────────────────────────
-# 1. Gmail 최신 메일 가져오기
-# ────────────────────────────
+
 def get_recent_emails(max_results=MAX_RESULTS):
     print(f"\n📬 Gmail에서 최신 메일 {max_results}개 가져오는 중...")
-    result = subprocess.run(
-        [GWS, "gmail", "users", "messages", "list",
-         "--params", json.dumps({"userId": GMAIL_USER, "maxResults": max_results})],
-        capture_output=True, text=True, encoding="utf-8", errors="replace"
-    )
-    data = json.loads(result.stdout)
+    data = run_gws([
+        "gmail", "users", "messages", "list",
+        "--params", json.dumps({"userId": GMAIL_USER, "maxResults": max_results})
+    ])
     return data.get("messages", [])
 
-# ────────────────────────────
-# 2. 메일 내용 읽기
-# ────────────────────────────
+
 def get_email_content(message_id):
-    result = subprocess.run(
-        [GWS, "gmail", "users", "messages", "get",
-         "--params", json.dumps({"userId": GMAIL_USER, "id": message_id, "format": "full"})],
-        capture_output=True, text=True, encoding="utf-8", errors="replace"
-    )
-    return json.loads(result.stdout)
+    return run_gws([
+        "gmail", "users", "messages", "get",
+        "--params", json.dumps({"userId": GMAIL_USER, "id": message_id, "format": "full"})
+    ])
+
 
 def parse_email(email_data):
     headers = email_data.get("payload", {}).get("headers", [])
@@ -64,17 +80,15 @@ def parse_email(email_data):
 
     return {"subject": subject, "sender": sender, "date": date, "body": body}
 
-# ────────────────────────────
-# 3. Claude Code로 일정 추출
-# ────────────────────────────
+
 def extract_event_with_claude(email):
     today = datetime.now().strftime("%Y-%m-%d")
-    prompt = f"""
-다음 이메일에서 일정 정보를 추출해줘.
+    prompt = f"""다음 이메일에서 일정 정보를 추출해줘.
 오늘 날짜는 {today}이야.
 
 반드시 아래 JSON 형식으로만 응답해. 다른 말은 하지 마.
 일정이 없으면 "has_event": false로 줘.
+시간이 명시되지 않은 경우 오전 9시(09:00)를 기본값으로 써줘.
 
 {{
   "has_event": true,
@@ -89,11 +103,13 @@ def extract_event_with_claude(email):
 제목: {email['subject']}
 날짜: {email['date']}
 본문:
-{email['body'][:2000]}
-"""
+{email['body'][:2000]}"""
+
+    claude_cmd = "claude.cmd" if sys.platform == "win32" else "claude"
     result = subprocess.run(
-        ["claude", "-p", prompt],
-        capture_output=True, text=True, encoding="utf-8", errors="replace"
+        f'{claude_cmd} -p {json.dumps(prompt)} --output-format text',
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        shell=True
     )
     raw = result.stdout.strip()
 
@@ -108,9 +124,7 @@ def extract_event_with_claude(email):
         print(f"  Claude 응답: {raw[:200]}")
         return None
 
-# ────────────────────────────
-# 4. Google Calendar 등록
-# ────────────────────────────
+
 def register_to_calendar(event_data, email):
     confidence = event_data.get("confidence_score", 1.0)
     summary = event_data["summary"]
@@ -120,7 +134,6 @@ def register_to_calendar(event_data, email):
 
     resource = {
         "summary": summary,
-        "description": f"{event_data.get('description', '')}\n\n---\nAI 자동 등록 | 원본 메일: {email['subject']} | confidence: {confidence}",
         "start": {
             "dateTime": event_data["start_datetime"],
             "timeZone": "Asia/Seoul"
@@ -131,20 +144,18 @@ def register_to_calendar(event_data, email):
         }
     }
 
+    params = json.dumps({"calendarId": CALENDAR_ID}).replace('"', '\\"')
+    body = json.dumps(resource).replace('"', '\\"')
+    cmd = f'gws calendar events insert --params "{params}" --json "{body}"'
     result = subprocess.run(
-        [GWS, "calendar", "events", "insert",
-         "--params", json.dumps({"calendarId": CALENDAR_ID}),
-         "--json", json.dumps(resource)],
-        capture_output=True, text=True, encoding="utf-8", errors="replace"
+        cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", shell=True
     )
-    return json.loads(result.stdout)
+    return parse_gws_output(result.stdout)
 
-# ────────────────────────────
-# 메인 실행
-# ────────────────────────────
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--message-id", help="처리할 특정 메일 ID (watcher에서 호출 시 사용)")
+    parser.add_argument("--message-id", help="처리할 특정 메일 ID")
     args = parser.parse_args()
 
     print("🚀 DAP 파이프라인 시작")
@@ -206,6 +217,7 @@ def main():
 
     print(f"\n{'─'*50}")
     print(f"🏁 완료 | 등록: {success_count}개 | 스킵: {skip_count}개")
+
 
 if __name__ == "__main__":
     main()

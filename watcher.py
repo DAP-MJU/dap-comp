@@ -15,10 +15,14 @@ PIPELINE      = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pipeli
 PYTHON        = sys.executable
 
 _watcher_proc = None
+_shutting_down = False
 
 
 def handle_sigint(sig, frame):
-    print("\n\n👋 Ctrl+C 감지 — watcher 종료 중...")
+    global _shutting_down
+    if _shutting_down:
+        return
+    _shutting_down = True
     if _watcher_proc and _watcher_proc.poll() is None:
         _watcher_proc.terminate()
     sys.exit(0)
@@ -26,7 +30,8 @@ def handle_sigint(sig, frame):
 
 def should_process(email_json: dict) -> bool:
     labels = email_json.get("labelIds", [])
-    return "INBOX" in labels and "DRAFT" not in labels
+    # SENT 라벨 제외 (자신에게 보낸 메일이 SENT+INBOX로 들어올 수 있음)
+    return "INBOX" in labels and "DRAFT" not in labels and "SENT" not in labels
 
 
 def process_email(email_id: str) -> None:
@@ -46,7 +51,7 @@ def main() -> None:
 
     print("👀 Gmail 새 메일 감지 시작")
     print(f"   GCP 프로젝트  : {GCP_PROJECT}")
-    print(f"   라벨 필터     : INBOX (DRAFT 제외)")
+    print(f"   라벨 필터     : INBOX (DRAFT, SENT 제외)")
     print(f"   폴링 간격     : {POLL_INTERVAL}초")
     print("   Ctrl+C 로 종료\n")
 
@@ -57,7 +62,6 @@ def main() -> None:
         "--poll-interval", str(POLL_INTERVAL),
     ]
 
-    # stderr 는 터미널로 바로 출력해 gws 오류를 즉시 확인
     _watcher_proc = subprocess.Popen(
         " ".join(cmd),
         stdout=subprocess.PIPE,
@@ -68,9 +72,10 @@ def main() -> None:
         shell=True,
     )
 
-
     try:
         for raw_line in _watcher_proc.stdout:
+            if _shutting_down:
+                break
             line = raw_line.strip()
             if not line:
                 continue
@@ -78,7 +83,6 @@ def main() -> None:
             try:
                 email_json = json.loads(line)
             except json.JSONDecodeError:
-                # gws 상태 메시지 등 JSON 이 아닌 줄은 그대로 출력
                 print(f"   ℹ️  {line}")
                 continue
 

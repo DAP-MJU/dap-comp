@@ -4,15 +4,11 @@ import json
 import os
 import shutil
 import sys
-import platform
 from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
 GWS = shutil.which("gws.cmd") or shutil.which("gws") or "gws"
-
-def _insert_subcmd():
-    return "+insert" if platform.system() == "Windows" else "insert"
 
 def parse_gws_output(stdout: str):
     idx = -1
@@ -152,9 +148,9 @@ def register_to_calendar(event_data, email):
     }
 
     result = subprocess.run(
-        [GWS, "calendar", "events", _insert_subcmd(), "--params", json.dumps({"calendarId": CALENDAR_ID}), "--json", "-"],
+        [GWS, "calendar", "events", "insert", "--params", json.dumps({"calendarId": CALENDAR_ID}), "--json", "-"],
         input=json.dumps(resource, ensure_ascii=False), capture_output=True,
-        text=True, encoding="utf-8", errors="replace", shell=False
+        text=True, encoding="utf-8", errors="replace", shell=True
     )
     return parse_gws_output(result.stdout)
 

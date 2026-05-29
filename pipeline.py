@@ -148,9 +148,8 @@ def register_to_calendar(event_data, email):
     }
 
     result = subprocess.run(
-        [GWS, "calendar", "events", "insert", "--params", json.dumps({"calendarId": CALENDAR_ID}), "--json", "-"],
-        input=json.dumps(resource, ensure_ascii=False), capture_output=True,
-        text=True, encoding="utf-8", errors="replace", shell=True
+        [GWS, "calendar", "events", "insert", "--params", json.dumps({"calendarId": CALENDAR_ID}), "--json", json.dumps(resource, ensure_ascii=False)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", shell=True
     )
     return parse_gws_output(result.stdout)
 

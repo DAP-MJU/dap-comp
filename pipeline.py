@@ -134,6 +134,10 @@ def register_to_calendar(event_data, email):
 
     resource = {
         "summary": summary,
+        "description": (
+            f"{event_data.get('description', '')}\n\n"
+            f"---\nAI 자동 등록 | 원본 메일: {email['subject']} | 신뢰도: {confidence}"
+        ),
         "start": {
             "dateTime": event_data["start_datetime"],
             "timeZone": "Asia/Seoul"
@@ -144,11 +148,10 @@ def register_to_calendar(event_data, email):
         }
     }
 
-    params = json.dumps({"calendarId": CALENDAR_ID}).replace('"', '\\"')
-    body = json.dumps(resource).replace('"', '\\"')
-    cmd = f'gws calendar events insert --params "{params}" --json "{body}"'
     result = subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", shell=True
+        [GWS, "calendar", "insert", "--params", json.dumps({"calendarId": CALENDAR_ID}), "--json", "-"],
+        input=json.dumps(resource, ensure_ascii=False), capture_output=True,
+        text=True, encoding="utf-8", shell=False
     )
     return parse_gws_output(result.stdout)
 
